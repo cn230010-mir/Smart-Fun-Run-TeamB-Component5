@@ -1,7 +1,8 @@
 import socket
 import threading
 import json
-from database_handler import save_environmental_data
+# Diubah: Import fungsi baru yang kawan anda buat
+from database_handler import save_safety_data 
 
 # Server Configuration
 HOST = '0.0.0.0'  # Listens on all available network interfaces
@@ -15,15 +16,18 @@ def handle_client(client_socket, client_address):
     print(f"[NEW CONNECTION] Thread active for device at {client_address}")
     
     try:
+        # Receive the JSON payload from the IoT device
         data = client_socket.recv(1024).decode('utf-8')
         if data:
+            # Parse the incoming string into a JSON object
             payload = json.loads(data)
             print(f"[DATA RECEIVED] From {client_address}: {payload}")
             
-            # Pass data to the database handler to be safely stored
-            save_environmental_data(payload)
+            # Diubah: Menggunakan fungsi save_safety_data yang baru
+            save_safety_data(payload)
             
-            response = {"status": "SUCCESS", "message": "Data logged safely."}
+            # Send acknowledgement back to the IoT device
+            response = {"status": "SUCCESS", "message": "Safety telemetry logged safely."}
             client_socket.send(json.dumps(response).encode('utf-8'))
             
     except Exception as e:
@@ -36,12 +40,16 @@ def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     server.listen()
-    print(f"[SERVER STARTED] Listening for Environmental & Safety IoT data on port 5000...")
+    print(f"[SERVER STARTED] Listening for Environmental & Safety IoT data on port {PORT}...")
 
     while True:
+        # Accept incoming connections from IoT microcontrollers
         client_socket, client_address = server.accept()
+        
+        # Create a new thread for the connection to prevent blocking other devices
         thread = threading.Thread(target=handle_client, args=(client_socket, client_address))
         thread.start()
+        print(f"[ACTIVE THREADS] Total active connections: {threading.active_count() - 1}")
 
 if __name__ == "__main__":
     main()
