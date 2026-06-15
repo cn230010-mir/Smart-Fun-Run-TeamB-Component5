@@ -7,9 +7,10 @@ from flask import Flask, render_template_string, Response, request, jsonify
 
 app = Flask(__name__)
 
-# Memori perkongsian log global (Thread-safe queue)
+# Memori perkongsian global (Thread-safe)
 LIVE_LOGS = []
 EVENT_LISTENERS = []
+REGISTERED_RUNNERS = {}  # Menyimpan data pelari yang mendaftar sendiri via telefon
 
 class SimpleQueue:
     def __init__(self):
@@ -46,20 +47,21 @@ def broadcast_to_admin(data):
 # =====================================================================
 @app.route('/admin')
 def admin_dashboard():
+    # Menghasilkan QR Code am (Generic QR) untuk diletakkan di kaunter pendaftaran
     host_base = request.host
-    runner_list = ["RUNNER_001", "RUNNER_034", "RUNNER_102", "RUNNER_555"]
+    generic_qr_url = f"http://{host_base}/"
     
     html_template = """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>HQ Command Center - Admin Only</title>
+        <title>HQ Command Center - Admin Panel</title>
         <style>
             body { font-family: Arial, sans-serif; margin: 30px; background-color: #0f172a; color: #f8fafc; }
-            h1 { color: #38bdf8; }
+            h1 { color: #38bdf8; margin-bottom: 5px; }
             .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-top: 20px; }
             .card { background: #1e293b; padding: 20px; border-radius: 12px; }
-            .qr-card { background: white; color: black; padding: 10px; margin: 10px 0; border-radius: 8px; text-align: center; }
+            .qr-zone { background: white; color: black; padding: 20px; border-radius: 8px; text-align: center; margin-top: 15px; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #0f172a; }
             th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1e293b; }
             th { background-color: #334155; color: #38bdf8; }
@@ -74,30 +76,33 @@ def admin_dashboard():
     <body>
         <div id="emergencyOverlay"><div class="alert-box">
             <h2 style="color:#dc2626; font-size:36px;">🚨 SOS KECEMASAN DIKESAN 🚨</h2>
-            <p id="alertMessage" style="font-size:20px; font-weight:bold;"></p>
-            <button onclick="document.getElementById('emergencyOverlay').style.display='none'" style="padding:10px 20px; margin-top:15px; cursor:pointer;">SAHKAN AMARAN</button>
+            <p id="alertMessage" style="font-size:20px; font-weight:bold; color: black;"></p>
+            <div style="font-size:14px; color:#64748b; margin-bottom:15px;">Sila hubungi pasukan perubatan zon terdekat dengan segera.</div>
+            <button onclick="document.getElementById('emergencyOverlay').style.display='none'" style="padding:10px 20px; cursor:pointer; font-weight:bold;">SAHKAN AMARAN</button>
         </div></div>
 
         <h1>🛸 HQ Command Center: Panel Urus Setia</h1>
+        <p style="color:#94a3b8; margin:0;">Sistem Pengurusan Keselamatan Acara Larian Pintar</p>
+        
         <div class="grid">
             <div class="card">
-                <h3>Cetak QR Kod Pelari</h3>
-                {% for runner in runners %}
-                <div class="qr-card">
-                    <b>{{ runner }}</b><br>
-                    <img src="https://chart.googleapis.com/chart?chs=130x130&cht=qr&chl=http://{{ host }}/?runner_id={{ runner }}&choe=UTF-8"><br>
-                    <a href="http://{{ host }}/?runner_id={{ runner }}" target="_blank" style="font-size:11px; color:#0284c7; text-decoration:none; font-weight:bold;">Buka Profil Pelari 🔗</a>
+                <h3>QR Code Pendaftaran Pelari</h3>
+                <p style="font-size:13px; color:#94a3b8;">Letakkan QR Code ini di papan tanda atau meja urus setia. Pelari perlu mengimbas QR ini untuk mendaftar profil peranti mereka sebelum larian bermula.</p>
+                <div class="qr-zone">
+                    <img src="https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl={{ qr_link }}&choe=UTF-8"><br>
+                    <a href="{{ qr_link }}" target="_blank" style="font-size:13px; color:#0284c7; text-decoration:none; font-weight:bold; display:block; margin-top:10px;">Simulasi Imbas Telefon Pelari 🔗</a>
                 </div>
-                {% endfor %}
             </div>
+            
             <div class="card">
                 <h3>Log Isyarat Kecemasan Semasa (Auto-Refreshes)</h3>
                 <table>
-                    <thead><tr><th>Masa</th><th>ID Pelari</th><th>Suhu (°C)</th><th>Kelembapan (%)</th><th>Status</th></tr></thead>
-                    <tbody id="logTableBody"><tr><td colspan="5" style="text-align:center; color:#64748b;">Menunggu isyarat rangkaian...</td></tr></tbody>
+                    <thead><tr><th>Masa</th><th>ID Bib</th><th>Nama Pelari</th><th>Suhu (°C)</th><th>Status</th></tr></thead>
+                    <tbody id="logTableBody"><tr><td colspan="5" style="text-align:center; color:#64748b;">Menunggu pendaftaran atau isyarat SOS pelari...</td></tr></tbody>
                 </table>
             </div>
         </div>
+
         <script>
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             function bleep() {
@@ -105,16 +110,24 @@ def admin_dashboard():
                 osc.type = 'sawtooth'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
                 osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.4);
             }
+            
             const eventSource = new EventSource('/stream');
             eventSource.onmessage = function(event) {
                 const log = JSON.parse(event.data);
                 const tbody = document.getElementById('logTableBody');
                 if (tbody.rows.length == 1 && tbody.rows[0].cells.length == 1) tbody.innerHTML = '';
+                
                 const row = tbody.insertRow(0);
-                row.innerHTML = `<td>${log.timestamp}</td><td><b style="color:#38bdf8;">${log.runner_id}</b></td><td>${log.telemetry.temperature_c} °C</td><td>${log.telemetry.humidity_pct} %</td><td><span class="status-tag ${log.emergency_sos ? 'tag-sos' : 'tag-safe'}">${log.emergency_sos ? '🚨 CRITICAL SOS' : '✅ SAFE'}</span></td>`;
+                row.innerHTML = `
+                    <td>${log.timestamp}</td>
+                    <td><b style="color:#38bdf8;">${log.runner_id}</b></td>
+                    <td>${log.runner_name}</td>
+                    <td>${log.telemetry.temperature_c} °C</td>
+                    <td><span class="status-tag ${log.emergency_sos ? 'tag-sos' : 'tag-safe'}">${log.emergency_sos ? '🚨 CRITICAL SOS' : '✅ REGISTERED / SAFE'}</span></td>
+                `;
                 
                 if (log.emergency_sos === true) {
-                    document.getElementById('alertMessage').innerText = `PELARI ${log.runner_id} MEMERLUKAN BANTUAN SEGERA!`;
+                    document.getElementById('alertMessage').innerText = `PELARI: ${log.runner_name} (BIB: ${log.runner_id}) MEMERLUKAN BANTUAN!`;
                     document.getElementById('emergencyOverlay').style.display = 'flex';
                     bleep();
                 }
@@ -123,18 +136,51 @@ def admin_dashboard():
     </body>
     </html>
     """
-    return render_template_string(html_template, runners=runner_list, host=host_base)
+    return render_template_string(html_template, qr_link=generic_qr_url)
 
 # =====================================================================
-# 2. HALAMAN UNTUK USER/PELARI (http://localhost:8080/?runner_id=...)
+# 2. HALAMAN HALAMAN UNTUK USER (ALIRAN DAFTAR -> PORTAL SOS)
 # =====================================================================
 @app.route('/')
-def runner_profile():
-    target_runner = request.args.get('runner_id')
-    if not target_runner:
-        return '<body style="font-family:Arial;text-align:center;margin-top:50px;"><h2>🏃‍♂️ Smart Fun Run Portal</h2><p>Sila scan QR Code rasmi pada bib anda untuk melihat profile.</p></body>'
-
-    html_template = """
+def runner_portal():
+    # Semak jika peranti ini sudah mempunyai ID pendaftaran dalam sesi parameter
+    runner_id = request.args.get('runner_id')
+    
+    # JIKALAU BELUM DAFTAR: Paparkan Halaman Borang Pendaftaran
+    if not runner_id or runner_id not in REGISTERED_RUNNERS:
+        html_register = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Pendaftaran Peranti Pelari</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f6f9; text-align: center; }
+                .box { max-width: 400px; margin: 40px auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+                h2 { color: #2c3e50; }
+                input[type="text"] { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; }
+                button { background-color: #3498db; color: white; border: none; width: 96%; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 15px; }
+                button:hover { background-color: #2980b9; }
+            </style>
+        </head>
+        <body>
+            <div class="box">
+                <h2>🏃‍♂️ Daftar Peranti Keselamatan</h2>
+                <p style="color:#7f8c8d; font-size:14px;">Sila masukkan maklumat anda sebelum memulakan larian acara Fun Run.</p>
+                <form action="/register_process" method="POST">
+                    <input type="text" name="runner_name" placeholder="Nama Penuh Anda" required>
+                    <input type="text" name="runner_id" placeholder="Nombor Bib Larian (Contoh: BIB999)" required>
+                    <button type="submit">DAFTAR PERANTI SAYA</button>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
+        return render_template_string(html_register)
+    
+    # JIKALAU SUDAH BERJAYA DAFTAR: Paparkan Halaman Utama Portal SOS Keselamatan
+    runner_info = REGISTERED_RUNNERS[runner_id]
+    html_sos_dashboard = """
     <!DOCTYPE html>
     <html>
     <head>
@@ -143,48 +189,89 @@ def runner_profile():
         <style>
             body { font-family: Arial, sans-serif; margin: 0; padding: 15px; background-color: #f4f6f9; text-align: center; }
             .profile-container { max-width: 400px; margin: 20px auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-            h1 { color: #2c3e50; font-size: 22px; }
-            .sos-button { background-color: #e74c3c; color: white; border: none; width: 100%; padding: 22px; font-size: 18px; font-weight: bold; border-radius: 12px; cursor: pointer; box-shadow: 0 5px 10px rgba(231, 76, 60, 0.4); }
-            .sos-button:active { transform: scale(0.97); }
+            h1 { color: #2c3e50; font-size: 22px; margin-bottom: 5px; }
+            .status-ok { color: #27ae60; font-weight: bold; background: #e8f8f0; display: inline-block; padding: 5px 15px; border-radius: 20px; font-size: 13px; }
+            .sos-button { background-color: #e74c3c; color: white; border: none; width: 100%; padding: 25px; font-size: 20px; font-weight: bold; border-radius: 12px; cursor: pointer; box-shadow: 0 5px 10px rgba(231, 76, 60, 0.4); margin-top: 20px; }
+            .sos-button:active { transform: scale(0.97); background-color: #c0392b; }
         </style>
         <script>
             function sendSos() {
-                if(confirm("🚨 Kirim amaran kecemasan sekarang kepada Urus Setia HQ?")) {
+                if(confirm("🚨 AMARAN: Adakah anda pasti mahu menghantar isyarat kecemasan ke HQ Urus Setia?")) {
                     fetch('/trigger_web_sos', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ runner_id: "{{ runner_id }}" })
-                    }).then(() => alert("✅ Isyarat dihantar! Bantuan perubatan sedang menuju ke lokasi anda."));
+                        body: JSON.stringify({ runner_id: "{{ runner_id }}", runner_name: "{{ runner_name }}" })
+                    }).then(() => alert("✅ SOS Berjaya Dihantar! Pasukan perubatan kini sedang digerakkan ke lokasi anda."));
                 }
             }
         </script>
     </head>
     <body>
         <div class="profile-container">
-            <h1>🏃‍♂️ My Active Safety Portal</h1>
-            <p style="font-size:18px; color:#7f8c8d; font-weight:bold;">ID Pelari: {{ runner_id }}</p>
-            <br>
+            <h1>🏃‍♂️ Portal Keselamatan Aktif</h1>
+            <div class="status-ok">Sistem Memantau Aktiviti</div>
+            
+            <div style="text-align: left; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                <p style="margin: 5px 0;"><b>Nama Pelari:</b> {{ runner_name }}</p>
+                <p style="margin: 5px 0;"><b>No. Bib:</b> {{ runner_id }}</p>
+            </div>
+            
             <button class="sos-button" onclick="sendSos()">🚨 TEKAN JIKA KECEMASAN (SOS)</button>
+            <p style="font-size:11px; color:#95a5a6; margin-top:15px;">Isyarat kecemasan ini akan dikesan oleh sistem operasi HQ secara langsung.</p>
         </div>
     </body>
     </html>
     """
-    return render_template_string(html_template, runner_id=target_runner)
+    return render_template_string(html_sos_dashboard, runner_id=runner_id, runner_name=runner_info['name'])
+
+@app.route('/register_process', methods=['POST'])
+def register_process():
+    """ Memproses maklumat pendaftaran borang """
+    runner_name = request.form.get('runner_name')
+    runner_id = request.form.get('runner_id').strip().upper()
+    
+    # Daftarkan maklumat ke dalam kamus (Dictionary) server global
+    REGISTERED_RUNNERS[runner_id] = {
+        "name": runner_name,
+        "registration_time": datetime.now().strftime("%H:%M:%S")
+    }
+    
+    # Hantar maklumat log pendaftaran am awal ke pelayar urus setia admin (SOS = False)
+    payload = {
+        "timestamp": datetime.now().strftime("%H:%M:%S"),
+        "device_id": "REGISTRATION_DESK",
+        "runner_id": runner_id,
+        "runner_name": runner_name,
+        "telemetry": {"temperature_c": 36.5},  # Suhu normal semasa mendaftar
+        "emergency_sos": False
+    }
+    
+    # Hantar ke socket dalaman (Port 5000) supaya admin dapat melihat pendaftaran secara real-time
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('127.0.0.1', 5000))
+        s.send(json.dumps(payload).encode('utf-8'))
+        s.close()
+    except: pass
+
+    # Selepas mendaftar, bawa pengguna terus ke portal SOS mereka menggunakan parameter ?runner_id=
+    return f"<script>window.location.href='/?runner_id={runner_id}';</script>"
 
 @app.route('/trigger_web_sos', methods=['POST'])
 def trigger_web_sos():
     data = request.json
     runner_id = data.get('runner_id')
+    runner_name = data.get('runner_name')
     
     emergency_payload = {
         "timestamp": datetime.now().strftime("%H:%M:%S"),
         "device_id": "RUNNER_MOBILE_WEB",
         "runner_id": runner_id,
-        "telemetry": {"temperature_c": 38.5, "humidity_pct": 79.0},
+        "runner_name": runner_name,
+        "telemetry": {"temperature_c": 39.2},  # Simulasi suhu tinggi semasa kecemasan
         "emergency_sos": True
     }
     
-    # Hantar isyarat melalui dalaman (internal socket loopback) ke Port 5000
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('127.0.0.1', 5000))
@@ -195,7 +282,7 @@ def trigger_web_sos():
     return jsonify({"status": "SUCCESS"})
 
 # =====================================================================
-# 3. BACKGROUND SOCKET SERVER (Port 5000 - Untuk ESP32 & Web SOS)
+# 3. BACKGROUND SOCKET SERVER (Port 5000 - Mendengar Isyarat ESP32 / Web)
 # =====================================================================
 def handle_iot_client(client_socket, client_address):
     try:
@@ -203,6 +290,15 @@ def handle_iot_client(client_socket, client_address):
         if data:
             payload = json.loads(data)
             payload["timestamp"] = datetime.now().strftime("%H:%M:%S")
+            
+            # Jika isyarat datang daripada ESP32 yang tiada "runner_name", carinya daripada memori pendaftaran
+            if "runner_name" not in payload or not payload["runner_name"]:
+                r_id = payload.get("runner_id", "").upper()
+                if r_id in REGISTERED_RUNNERS:
+                    payload["runner_name"] = REGISTERED_RUNNERS[r_id]["name"]
+                else:
+                    payload["runner_name"] = "Pelari Perkakasan (Bukan Web)"
+            
             LIVE_LOGS.append(payload)
             broadcast_to_admin(payload)
     except: pass
@@ -217,9 +313,6 @@ def run_socket_server():
         threading.Thread(target=handle_iot_client, args=(client_socket, client_address)).start()
 
 if __name__ == "__main__":
-    # Jalankan socket listener (Port 5000) di latar belakang (Background Thread)
     threading.Thread(target=run_socket_server, daemon=True).start()
-    
-    # Jalankan Flask Web Server utama pada Port 8080
-    print("[SERVER STARTED] Listening for Environmental & Safety IoT data on port 5000.")
+    print("[SERVER STARTED] Listening on port 8080 (Flask) and port 5000 (Socket).")
     app.run(host='0.0.0.0', port=8080, debug=False)
