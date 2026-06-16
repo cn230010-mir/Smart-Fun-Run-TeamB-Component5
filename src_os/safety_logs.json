@@ -1,0 +1,42 @@
+[
+    {
+        "device_id": "ENV_SAFE_01",
+        "runner_id": "RUNNER_034",
+        "telemetry": {
+            "temperature_c": 31.5,
+            "humidity_pct": 65.2
+        },
+        "emergency_sos": false,
+        "timestamp": 1781276463
+    },
+    {
+        "device_id": "ENV_SAFE_01",
+        "runner_id": "RUNNER_034",
+        "telemetry": {
+            "temperature_c": 35.8,
+            "humidity_pct": 70.1
+        },
+        "emergency_sos": true,
+        "timestamp": 1781276464
+    },
+    {
+        "device_id": "ENV_SAFE_01",
+        "runner_id": "RUNNER_034",
+        "telemetry": {
+            "temperature_c": 31.5,
+            "humidity_pct": 65.2
+        },
+        "emergency_sos": false,
+        "timestamp": 1781509083
+    },
+    {
+        "device_id": "ENV_SAFE_01",
+        "runner_id": "RUNNER_034",
+        "telemetry": {
+            "temperature_c": 35.8,
+            "humidity_pct": 70.1
+        },
+        "emergency_sos": true,
+        "timestamp": 1781509084
+    }
+]
