@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergency Runner SOS</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .sos-btn { background: #ff4b4b; color: white; border: none; border-radius: 50%; width: 200px; height: 200px; font-size: 20px; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px rgba(255,75,75,0.4); margin-top: 40px; transition: all 0.3s ease; }
+        .sos-btn:active { transform: scale(0.95); }
+        #status { margin-top: 20px; font-size: 14px; color: #aaa; }
+    </style>
+</head>
+<body>
+    <h1>SAFETY MONITORING PORTAL</h1>
+    <p>Runner ID Detected: <strong id="runner-display">Extracting...</strong></p>
+   
+    <button class="sos-btn" id="sosBtn" onclick="toggleEmergency()">TRIGGER SOS</button>
+   
+    <div id="status">Monitoring Environment...</div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const runnerId = urlParams.get('runner_id') || "UNKNOWN_RUNNER";
+        document.getElementById('runner-display').innerText = runnerId;
+
+        let isEmergencyActive = localStorage.getItem('sos_active_' + runnerId) === 'true';
+
+        function updateButtonUI() {
+            const btn = document.getElementById('sosBtn');
+            if (isEmergencyActive) {
+                btn.innerText = "CANCEL SOS\n(I AM SAFE)";
+                btn.style.background = "#238636";
+                btn.style.boxShadow = "0 0 20px rgba(35,134,54,0.4)";
+            } else {
+                btn.innerText = "TRIGGER SOS";
+                btn.style.background = "#ff4b4b";
+                btn.style.boxShadow = "0 0 20px rgba(255,75,75,0.4)";
+            }
+        }
+
+        updateButtonUI();
+
+        function toggleEmergency() {
+            isEmergencyActive = !isEmergencyActive;
+            localStorage.setItem('sos_active_' + runnerId, isEmergencyActive);
+            updateButtonUI();
+
+            if (isEmergencyActive) {
+                document.getElementById('status').innerText = "🔄 Locking onto GPS Satellites...";
+            } else {
+                document.getElementById('status').innerText = "✅ SOS Cancelled. Returning to monitoring...";
+            }
+            
+            sendTelemetryPing(); // Immediate update
+        }
+
+        function sendToServer(payload) {
+            fetch('/api/safety', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(() => {
+                const now = new Date().toLocaleTimeString();
+                if (isEmergencyActive) {
+                    document.getElementById('status').innerHTML = `<span style="color: #ff4b4b; font-weight:bold;">🟢 LIVE SOS TRACKING ACTIVE<br>Last ping: ${now}</span>`;
+                } else {
+                    document.getElementById('status').innerText = `Environment synced. Last ping: ${now}`;
+                }
+            }).catch(err => {
+                console.error("Network Error:", err);
+                document.getElementById('status').innerText = "⚠️ Connection lost";
+            });
+        }
+
+        function sendTelemetryPing() {
+            let payload = {
+                "device_id": "MOBILE_BROWSER",
+                "runner_id": runnerId,
+                "emergency_sos": isEmergencyActive,
+                "telemetry": {
+                    "temperature_c": 31.5,
+                    "humidity_pct": 65.2
+                },
+                "timestamp": Math.floor(Date.now() / 1000)
+            };
+
+            if (isEmergencyActive && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        payload.telemetry.latitude = position.coords.latitude;
+                        payload.telemetry.longitude = position.coords.longitude;
+                        console.log("📍 GPS acquired:", position.coords.latitude, position.coords.longitude);
+                        sendToServer(payload);
+                    },
+                    (error) => {
+                        console.error("GPS Error:", error);
+                        sendToServer(payload); // Send SOS without GPS
+                    },
+                    { 
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0 
+                    }
+                );
+            } else {
+                sendToServer(payload);
+            }
+        }
+
+        // Background ping every 5 seconds
+        setInterval(sendTelemetryPing, 5000);
+        sendTelemetryPing(); // Initial ping
+    </script>
+</body>
+</html>
