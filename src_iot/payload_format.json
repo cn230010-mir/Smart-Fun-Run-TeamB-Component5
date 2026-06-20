@@ -1,0 +1,11 @@
+{
+    "_comment": "Standard IoT Payload Schema for Environmental & Safety Monitoring Node",
+    "device_id": "ENV_SAFE_01",
+    "station_location": "CHECKPOINT_1",
+    "telemetry": {
+        "temperature_c": 31.5,
+        "humidity_pct": 65.2
+    },
+    "emergency_sos": false,
+    "timestamp": 1781276463
+}
