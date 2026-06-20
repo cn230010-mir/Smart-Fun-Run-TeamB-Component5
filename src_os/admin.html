@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin HQ | Safety Command Center</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
+        .header { text-align: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; margin-bottom: 20px; }
+        .header h1 { color: #ff4b4b; margin: 0; }
+        
+        .env-dashboard { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; }
+        .env-card { background: #161b22; border: 1px solid #30363d; padding: 20px 40px; border-radius: 10px; text-align: center; width: 250px; }
+        .env-card h3 { margin: 0; color: #8b949e; font-size: 16px; text-transform: uppercase; }
+        .env-card .value { font-size: 36px; font-weight: bold; color: #58a6ff; margin: 10px 0 0 0; }
+        .env-card .warning { color: #ff4b4b; font-size: 14px; font-weight: bold; margin-top: 5px; display: none; }
+
+        .container { display: flex; flex-direction: column; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        #map { height: 500px; width: 100%; border-radius: 10px; border: 2px solid #30363d; }
+        
+        table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 10px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #30363d; }
+        th { background: #21262d; color: #58a6ff; }
+        tr:hover { background: #30363d; }
+        .sos-badge { background: #ff4b4b; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .safe-badge { background: #238636; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .last-known { background: #f0b429; color: black; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🛡️ SAFETY SPRINTER</h1>
+        <p>Live Event Oversight & Geolocation Tracking</p>
+    </div>
+
+    <div class="env-dashboard">
+        <div class="env-card">
+            <h3>🌡️ Temperature</h3>
+            <div class="value" id="global-temp">-- °C</div>
+            <div class="warning" id="temp-warning">CRITICAL HEAT ALERT</div>
+        </div>
+        <div class="env-card">
+            <h3>💧 Humidity</h3>
+            <div class="value" id="global-hum">-- %</div>
+            <div class="warning" id="hum-warning">HIGH HUMIDITY ALERT</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="map"></div>
+        
+        <div>
+            <h3>🏃‍♂️ Live Runner Status Network</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Last Ping Time</th>
+                        <th>Runner ID</th>
+                        <th>Dist. from HQ</th>
+                        <th>GPS Status</th>
+                    </tr>
+                </thead>
+                <tbody id="log-table-body">
+                    <tr><td colspan="4" style="text-align:center;">Waiting for background data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const hqLat = 2.1501;
+        const hqLon = 102.7297;
+        const hqLocation = L.latLng(hqLat, hqLon);
+
+        var map = L.map('map').setView([hqLat, hqLon], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        var dynamicMapLayer = L.layerGroup().addTo(map);
+
+        L.circleMarker(hqLocation, { color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: 1, radius: 8 })
+         .addTo(map).bindPopup("<b>🛡️ ADMIN HQ TENT</b><br>Command Center");
+
+        function fetchLiveLogs() {
+            fetch('/api/safety/live')
+                .then(response => response.json())
+                .then(data => {
+                    dynamicMapLayer.clearLayers(); 
+                    
+                    let tableContent = "";
+                    let latestRunnerData = {}; 
+                    let runnerPaths = {};
+
+                    // Get latest environment data for dashboard
+                    if (data.length > 0) {
+                        let latestLog = data[data.length - 1];
+                        let trackTemp = latestLog.telemetry.temperature_c || "--";
+                        let trackHum = latestLog.telemetry.humidity_pct || "--";
+                        
+                        document.getElementById('global-temp').innerText = trackTemp + " °C";
+                        document.getElementById('global-hum').innerText = trackHum + " %";
+
+                        document.getElementById('temp-warning').style.display = (trackTemp >= 35) ? "block" : "none";
+                        document.getElementById('hum-warning').style.display = (trackHum >= 80) ? "block" : "none";
+                    }
+
+                    // Group by runner - keep only the MOST RECENT record
+                    data.forEach(log => {
+                        let rId = log.runner_id;
+                        if (!latestRunnerData[rId] || log.timestamp > latestRunnerData[rId].timestamp) {
+                            latestRunnerData[rId] = log;
+                        }
+                        
+                        // Collect path history for SOS runners
+                        if (log.emergency_sos === true && log.telemetry?.latitude && log.telemetry?.longitude) {
+                            if (!runnerPaths[rId]) runnerPaths[rId] = [];
+                            runnerPaths[rId].push([log.telemetry.latitude, log.telemetry.longitude]);
+                        }
+                    });
+
+                    // Build table and map markers
+                    for (let rId in latestRunnerData) {
+                        let log = latestRunnerData[rId];
+                        let isSOS = log.emergency_sos === true;
+                        let telemetry = log.telemetry || {};
+                        let lat = telemetry.latitude;
+                        let lon = telemetry.longitude;
+
+                        let timeString = new Date(log.timestamp * 1000).toLocaleTimeString();
+                        let distanceStr = "--";
+                        let statusHtml = '<span class="safe-badge">SAFE</span>';
+
+                        if (lat && lon) {
+                            let runnerLoc = L.latLng(lat, lon);
+                            let distanceMeters = hqLocation.distanceTo(runnerLoc);
+                            distanceStr = (distanceMeters / 1000).toFixed(2) + " km";
+
+                            if (isSOS) {
+                                statusHtml = '<span class="sos-badge">SOS ACTIVE</span>';
+                                
+                                // Draw movement path if available
+                                let path = runnerPaths[rId];
+                                if (path && path.length > 1) {
+                                    L.polyline(path, { color: '#ff4b4b', weight: 4, dashArray: '5, 10' }).addTo(dynamicMapLayer);
+                                }
+                            } else {
+                                statusHtml = '<span class="last-known">Last Known Pos</span>';
+                            }
+
+                            let popupText = `<b>🏃‍♂️ ${rId}</b><br>${isSOS ? '🆘 <b>SOS TRIGGERED</b>' : '📍 Last Known Location'}<br>⏱️ ${timeString}<br>📍 ${distanceStr}`;
+                            L.marker(runnerLoc).addTo(dynamicMapLayer).bindPopup(popupText);
+                        }
+
+                        tableContent += `
+                            <tr>
+                                <td>${timeString}</td>
+                                <td><strong>${rId}</strong></td>
+                                <td>${distanceStr}</td>
+                                <td>${statusHtml}</td>
+                            </tr>
+                        `;
+                    }
+
+                    if (Object.keys(latestRunnerData).length === 0) {
+                        tableContent = '<tr><td colspan="4" style="text-align:center; color: #aaa;">No runners tracked yet.</td></tr>';
+                    }
+
+                    document.getElementById('log-table-body').innerHTML = tableContent;
+                })
+                .catch(err => console.error("Error fetching logs:", err));
+        }
+
+        setInterval(fetchLiveLogs, 3000);
+        fetchLiveLogs();
+    </script>
+</body>
+</html>
