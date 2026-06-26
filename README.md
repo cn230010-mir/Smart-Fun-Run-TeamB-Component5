@@ -63,11 +63,9 @@ Follow these sequential steps to boot up and deploy the complete monitoring syst
    ```bash
    cd src_os
 
-```
-
 3. Run the multi-threaded Flask application core:
-```bash
-python server.py
+    ```bash
+    python server.py
 
 ```
 
