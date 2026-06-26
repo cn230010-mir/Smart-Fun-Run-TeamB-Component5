@@ -11,12 +11,12 @@ The core backend system (`server.py`) operates as a multi-threaded execution env
 
 ```text
                ┌──────────────────────────────────────────┐
-               │         Host OS Kernel Scheduler         │
+               │         Host OS Kernel Scheduler                 │
                └────────────────────┬─────────────────────┘
-                                    │ (Spawns worker threads)
+                                        │ (Spawns worker threads)
          ┌──────────────────────────┼──────────────────────────┐
          ▼                          ▼                          ▼
 ┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
-│  Worker Thread 1 │       │  Worker Thread 2 │       │  Daemon Thread 3 │
-│  (HTTP /admin)   │       │ (HTTP /register) │       │ (IoT TCP Socket) │
+│  Worker Thread 1    │       │  Worker Thread 2    │       │  Daemon Thread 3     │
+│  (HTTP /admin)      │       │ (HTTP /register)    │       │ (IoT TCP Socket)     │
 └──────────────────┘       └──────────────────┘       └──────────────────┘
