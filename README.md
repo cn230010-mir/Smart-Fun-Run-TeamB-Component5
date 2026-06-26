@@ -8,14 +8,21 @@ Component Name: Team B: Fixed Safety Checkpoint & Guardian Interrupt
 2. Team Members & Roles
 This unified repository is maintained by the following 7 sub-group members across the IoT and Operating System tracks:
 IoT Track (BNF44403)
-TAN JING HAN (Matric No: AN230137) — IoT Lead: Edge firmware architecture, hardware integration, and ISR configuration.
-CHIN JING WEN (Matric No: AN230122) — IoT Developer: Sensor calibration (DHT22), circuit prototyping, and payload schema formulation.
-DEIVAMALAR (Matric No: AN230118) — IoT Developer: Hardware housing/ruggedization, power management, and hardware testing.
+
+TAN JING HAN (Matric No: AN230137) - IoT Lead: Edge firmware architecture, hardware integration, and ISR configuration.
+
+CHIN JING WEN (Matric No: AN230122) - IoT Developer: Sensor calibration (DHT22), circuit prototyping, and payload schema formulation.
+
+DEIVAMALAR (Matric No: AN230118) - IoT Developer: Hardware housing/ruggedization, power management, and hardware testing.
 OS Track (BNF32303)
-ALYA KHAIRINA NABIHAH BINTI AHMAD JAWAHER (Matric No: CN230123) — OS Lead: Multi-threaded Flask core, synchronization locks, and overall backend architecture.
-FARINA BINTI FATHOL JAWAD (Matric No: CN230165) — OS Developer: Concurrency engineering (Thread management for Runner SOS and Telemetry streams).
-ARMIRA AINI BINTI ASMI (Matric No: CN230010) — OS Developer: Thread-safe storage engine, file I/O operations, and log routing (safety_logs.json).
-NUR ASHIKIN BINTI MOHD RIZAL (Matric No: CN230378) — OS Developer: API Gateway routing, deployment configuration, and command center telemetry ingestion.
+
+ALYA KHAIRINA NABIHAH BINTI AHMAD JAWAHER (Matric No: CN230123) - OS Lead: Multi-threaded Flask core, synchronization locks, and overall backend architecture.
+
+FARINA BINTI FATHOL JAWAD (Matric No: CN230165) - OS Developer: Concurrency engineering (Thread management for Runner SOS and Telemetry streams).
+
+ARMIRA AINI BINTI ASMI (Matric No: CN230010) - OS Developer: Thread-safe storage engine, file I/O operations, and log routing (safety_logs.json).
+
+NUR ASHIKIN BINTI MOHD RIZAL (Matric No: CN230378) - OS Developer: API Gateway routing, deployment configuration, and command center telemetry ingestion.
 
 3. Component Overview
 The "Survive The Run" system is an active, real-time participant protection platform designed to bridge the gap between localized edge telemetry and centralized administrative oversight during high-stakes endurance runs. During the live run, stationary monitoring nodes ("Guardian Interrupts") powered by ESP32 microcontrollers continuously capture ambient environmental data (temperature and humidity) via DHT22 sensors while supporting an instantaneous, hardware-interrupt-driven Emergency SOS button.
