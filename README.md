@@ -1,4 +1,4 @@
-Smart Fun Run — Environmental & Safety Monitoring System
+Smart Fun Run - Environmental & Safety Monitoring System
 IoT x OS Joint Project |
 Team B
 1. Project Title & Component Name
