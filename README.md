@@ -67,9 +67,6 @@ Follow these sequential steps to boot up and deploy the complete monitoring syst
     ```bash
     python server.py
 
-```
-
-
 
 > 💡 **System Note:** The server will spin up the isolated ingestion threads instantly and begin listening for client incoming packets on **Port 5000**.
 
